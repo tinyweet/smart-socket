@@ -1,3 +1,12 @@
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
+ * project name: smart-socket
+ * file name: VirtualBuffer.java
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
+
 package org.smartboot.socket.buffer;
 
 import java.nio.ByteBuffer;
@@ -39,6 +48,10 @@ public final class VirtualBuffer {
         this.buffer = buffer;
         this.parentPosition = parentPosition;
         this.parentLimit = parentLimit;
+    }
+
+    public static VirtualBuffer wrap(ByteBuffer buffer) {
+        return new VirtualBuffer(null, buffer, 0, 0);
     }
 
     int getParentPosition() {

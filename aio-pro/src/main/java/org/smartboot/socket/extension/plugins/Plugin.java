@@ -1,3 +1,12 @@
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
+ * project name: smart-socket
+ * file name: Plugin.java
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
+
 package org.smartboot.socket.extension.plugins;
 
 import org.smartboot.socket.NetMonitor;
@@ -8,7 +17,7 @@ import org.smartboot.socket.transport.AioSession;
  * @author 三刀
  * @version V1.0 , 2018/8/19
  */
-public interface Plugin<T> extends NetMonitor<T> {
+public interface Plugin<T> extends NetMonitor {
 
     /**
      * 对请求消息进行预处理，并决策是否进行后续的MessageProcessor处理。
@@ -19,7 +28,7 @@ public interface Plugin<T> extends NetMonitor<T> {
      * @param t
      * @return
      */
-    boolean preProcess(AioSession<T> session, T t);
+    boolean preProcess(AioSession session, T t);
 
 
     /**
@@ -30,6 +39,6 @@ public interface Plugin<T> extends NetMonitor<T> {
      * @param throwable
      * @see org.smartboot.socket.MessageProcessor#stateEvent(AioSession, StateMachineEnum, Throwable)
      */
-    void stateEvent(StateMachineEnum stateMachineEnum, AioSession<T> session, Throwable throwable);
+    void stateEvent(StateMachineEnum stateMachineEnum, AioSession session, Throwable throwable);
 
 }

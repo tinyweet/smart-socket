@@ -1,3 +1,12 @@
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
+ * project name: smart-socket
+ * file name: ReconnectPlugin.java
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
+
 package org.smartboot.socket.extension.plugins;
 
 import org.smartboot.socket.StateMachineEnum;
@@ -12,25 +21,23 @@ import java.nio.channels.AsynchronousChannelGroup;
  * @author 三刀
  * @version V1.0 , 2018/8/19
  */
-class ReconnectPlugin<T> extends AbstractPlugin<T> {
+class ReconnectPlugin extends AbstractPlugin {
 
-    private AioQuickClient<T> client;
-
+    private final AsynchronousChannelGroup asynchronousChannelGroup;
+    private final AioQuickClient client;
     private boolean shutdown = false;
 
-    private AsynchronousChannelGroup asynchronousChannelGroup;
-
-    public ReconnectPlugin(AioQuickClient<T> client) {
+    public ReconnectPlugin(AioQuickClient client) {
         this(client, null);
     }
 
-    public ReconnectPlugin(AioQuickClient<T> client, AsynchronousChannelGroup asynchronousChannelGroup) {
+    public ReconnectPlugin(AioQuickClient client, AsynchronousChannelGroup asynchronousChannelGroup) {
         this.client = client;
         this.asynchronousChannelGroup = asynchronousChannelGroup;
     }
 
     @Override
-    public void stateEvent(StateMachineEnum stateMachineEnum, AioSession<T> session, Throwable throwable) {
+    public void stateEvent(StateMachineEnum stateMachineEnum, AioSession session, Throwable throwable) {
         if (stateMachineEnum != StateMachineEnum.SESSION_CLOSED || shutdown) {
             return;
         }

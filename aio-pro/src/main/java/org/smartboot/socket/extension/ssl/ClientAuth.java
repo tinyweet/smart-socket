@@ -1,15 +1,17 @@
-/*
- * Copyright (c) 2018, org.smartboot. All rights reserved.
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
  * project name: smart-socket
  * file name: ClientAuth.java
- * Date: 2018-01-22
- * Author: sandao
- */
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
 
 package org.smartboot.socket.extension.ssl;
 
 /**
  * 配置引擎请求客户端验证。此选项只对服务器模式的引擎有用
+ *
  * @author 三刀
  * @version V1.0 , 2018/1/22
  */

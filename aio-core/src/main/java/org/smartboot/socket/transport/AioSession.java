@@ -1,3 +1,12 @@
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
+ * project name: smart-socket
+ * file name: AioSession.java
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
+
 package org.smartboot.socket.transport;
 
 import java.io.IOException;
@@ -6,11 +15,10 @@ import java.net.InetSocketAddress;
 import java.nio.channels.AsynchronousSocketChannel;
 
 /**
- * @param <T> 消息对象类型
  * @author 三刀
  * @version V1.0 , 2019/8/25
  */
-public abstract class AioSession<T> {
+public abstract class AioSession {
 
 
     /**
@@ -40,9 +48,6 @@ public abstract class AioSession<T> {
      */
     private Object attachment;
 
-    AioSession() {
-    }
-
     /**
      * 获取WriteBuffer用以数据输出
      *
@@ -57,6 +62,13 @@ public abstract class AioSession<T> {
     public final void close() {
         close(true);
     }
+
+    public abstract void awaitRead();
+
+    /**
+     * 继续触发读行为，该方法仅可在异步处理模式下可使用，否则会触发不可预知的异常
+     */
+    public abstract void signalRead();
 
     /**
      * 是否立即关闭会话
@@ -87,20 +99,20 @@ public abstract class AioSession<T> {
     /**
      * 获取附件对象
      *
-     * @param <T> 附件对象类型
+     * @param <A> 附件对象类型
      * @return 附件
      */
-    public final <T> T getAttachment() {
-        return (T) attachment;
+    public final <A> A getAttachment() {
+        return (A) attachment;
     }
 
     /**
      * 存放附件，支持任意类型
      *
-     * @param <T>        附件对象类型
+     * @param <A>        附件对象类型
      * @param attachment 附件对象
      */
-    public final <T> void setAttachment(T attachment) {
+    public final <A> void setAttachment(A attachment) {
         this.attachment = attachment;
     }
 
@@ -148,6 +160,5 @@ public abstract class AioSession<T> {
     public InputStream getInputStream(int length) throws IOException {
         throw new UnsupportedOperationException();
     }
-
 
 }

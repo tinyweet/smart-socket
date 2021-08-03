@@ -1,10 +1,11 @@
-/*
- * Copyright (c) 2017, org.smartboot. All rights reserved.
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
  * project name: smart-socket
- * file name: Filter.java
- * Date: 2017-11-25
- * Author: sandao
- */
+ * file name: NetMonitor.java
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
 
 package org.smartboot.socket;
 
@@ -31,11 +32,10 @@ import java.nio.channels.AsynchronousSocketChannel;
  * </p>
  * <b>非必要情况下请勿使用该接口，未来可能会调整接口设计</b>
  *
- * @param <T> 消息对象实体类型
  * @author 三刀
  * @version V1.0.0
  */
-public interface NetMonitor<T> {
+public interface NetMonitor {
 
 
     /**
@@ -44,9 +44,9 @@ public interface NetMonitor<T> {
      * </p>
      *
      * @param channel 当前已经建立连接的通道对象
-     * @return true:接受该连接,false:拒绝该连接
+     * @return 非null:接受该连接,null:拒绝该连接
      */
-    boolean shouldAccept(AsynchronousSocketChannel channel);
+    AsynchronousSocketChannel shouldAccept(AsynchronousSocketChannel channel);
 
     /**
      * 监控触发本次读回调Session的已读数据字节数
@@ -54,14 +54,14 @@ public interface NetMonitor<T> {
      * @param session  当前执行read的AioSession对象
      * @param readSize 已读数据长度
      */
-    void afterRead(AioSession<T> session, int readSize);
+    void afterRead(AioSession session, int readSize);
 
     /**
      * 即将开始读取数据
      *
      * @param session 当前会话对象
      */
-    void beforeRead(AioSession<T> session);
+    void beforeRead(AioSession session);
 
     /**
      * 监控触发本次写回调session的已写数据字节数
@@ -69,13 +69,13 @@ public interface NetMonitor<T> {
      * @param session   本次执行write回调的AIOSession对象
      * @param writeSize 本次输出的数据长度
      */
-    void afterWrite(AioSession<T> session, int writeSize);
+    void afterWrite(AioSession session, int writeSize);
 
     /**
      * 即将开始写数据
      *
      * @param session 当前会话对象
      */
-    void beforeWrite(AioSession<T> session);
+    void beforeWrite(AioSession session);
 
 }

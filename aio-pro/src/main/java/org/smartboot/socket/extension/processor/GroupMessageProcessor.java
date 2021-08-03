@@ -1,3 +1,12 @@
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
+ * project name: smart-socket
+ * file name: GroupMessageProcessor.java
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
+
 package org.smartboot.socket.extension.processor;
 
 import org.smartboot.socket.MessageProcessor;
@@ -14,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author 三刀
  * @version V1.0 , 2018/8/9
  */
-abstract class GroupMessageProcessor<T> implements MessageProcessor<T>, GroupIo<T> {
+abstract class GroupMessageProcessor<T> implements MessageProcessor<T>, GroupIo {
 
     private Map<String, GroupUnit> sessionGroup = new ConcurrentHashMap<>();
 
@@ -25,7 +34,7 @@ abstract class GroupMessageProcessor<T> implements MessageProcessor<T>, GroupIo<
      * @param session
      */
     @Override
-    public final synchronized void join(String group, AioSession<T> session) {
+    public final synchronized void join(String group, AioSession session) {
         GroupUnit groupUnit = sessionGroup.get(group);
         if (groupUnit == null) {
             groupUnit = new GroupUnit();
@@ -35,7 +44,7 @@ abstract class GroupMessageProcessor<T> implements MessageProcessor<T>, GroupIo<
     }
 
     @Override
-    public final synchronized void remove(String group, AioSession<T> session) {
+    public final synchronized void remove(String group, AioSession session) {
         GroupUnit groupUnit = sessionGroup.get(group);
         if (groupUnit == null) {
             return;
@@ -47,7 +56,7 @@ abstract class GroupMessageProcessor<T> implements MessageProcessor<T>, GroupIo<
     }
 
     @Override
-    public final void remove(AioSession<T> session) {
+    public final void remove(AioSession session) {
         for (String group : sessionGroup.keySet()) {
             remove(group, session);
         }
@@ -56,7 +65,7 @@ abstract class GroupMessageProcessor<T> implements MessageProcessor<T>, GroupIo<
     @Override
     public void writeToGroup(String group, byte[] t) {
         GroupUnit groupUnit = sessionGroup.get(group);
-        for(AioSession<T> aioSession:groupUnit.groupList){
+        for (AioSession aioSession : groupUnit.groupList) {
             try {
                 aioSession.writeBuffer().write(t);
             } catch (IOException e) {
@@ -66,6 +75,6 @@ abstract class GroupMessageProcessor<T> implements MessageProcessor<T>, GroupIo<
     }
 
     private class GroupUnit {
-        Set<AioSession<T>> groupList = new HashSet<>();
+        Set<AioSession> groupList = new HashSet<>();
     }
 }

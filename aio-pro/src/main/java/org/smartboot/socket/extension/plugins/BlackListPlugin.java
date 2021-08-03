@@ -1,3 +1,12 @@
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
+ * project name: smart-socket
+ * file name: BlackListPlugin.java
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
+
 package org.smartboot.socket.extension.plugins;
 
 import org.slf4j.Logger;
@@ -19,7 +28,7 @@ public final class BlackListPlugin<T> extends AbstractPlugin<T> {
     private ConcurrentLinkedQueue<BlackListRule> ipBlackList = new ConcurrentLinkedQueue<>();
 
     @Override
-    public boolean shouldAccept(AsynchronousSocketChannel channel) {
+    public AsynchronousSocketChannel shouldAccept(AsynchronousSocketChannel channel) {
         InetSocketAddress inetSocketAddress = null;
         try {
             inetSocketAddress = (InetSocketAddress) channel.getRemoteAddress();
@@ -27,14 +36,14 @@ public final class BlackListPlugin<T> extends AbstractPlugin<T> {
             LOGGER.error("get remote address error.", e);
         }
         if (inetSocketAddress == null) {
-            return true;
+            return channel;
         }
         for (BlackListRule rule : ipBlackList) {
             if (!rule.access(inetSocketAddress)) {
-                return false;
+                return null;
             }
         }
-        return true;
+        return channel;
     }
 
     /**

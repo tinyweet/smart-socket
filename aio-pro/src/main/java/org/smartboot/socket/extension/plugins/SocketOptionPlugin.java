@@ -1,3 +1,12 @@
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
+ * project name: smart-socket
+ * file name: SocketOptionPlugin.java
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
+
 package org.smartboot.socket.extension.plugins;
 
 import org.slf4j.Logger;
@@ -22,7 +31,7 @@ public class SocketOptionPlugin<T> extends AbstractPlugin<T> {
     private Map<SocketOption<Object>, Object> optionMap = new HashMap<>();
 
     @Override
-    public final boolean shouldAccept(AsynchronousSocketChannel channel) {
+    public final AsynchronousSocketChannel shouldAccept(AsynchronousSocketChannel channel) {
         setOption(channel);
         return super.shouldAccept(channel);
     }

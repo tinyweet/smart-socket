@@ -1,3 +1,12 @@
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
+ * project name: smart-socket
+ * file name: WriteBuffer.java
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
+
 package org.smartboot.socket.transport;
 
 import org.smartboot.socket.buffer.BufferPage;
@@ -8,6 +17,7 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 
 /**
  * 包装当前会话分配到的虚拟Buffer,提供流式操作方式
@@ -16,7 +26,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * @version V1.0 , 2018/11/8
  */
 
-public class WriteBuffer extends OutputStream {
+public final class WriteBuffer extends OutputStream {
     /**
      * 存储已就绪待输出的数据
      */
@@ -24,15 +34,13 @@ public class WriteBuffer extends OutputStream {
     /**
      * 同步锁
      */
-    private final ReentrantLock lock = new ReentrantLock();
+    private final ReentrantLock readLock = new ReentrantLock();
+    private final ReentrantLock writeLock = new ReentrantLock();
     /**
      * Condition for waiting puts
      */
-    private final Condition notFull = lock.newCondition();
-    /**
-     * 当缓冲队列已满时，触发线程阻塞条件
-     */
-    private final Condition waiting = lock.newCondition();
+    private final Condition notFull = readLock.newCondition();
+
     /**
      * 为当前 WriteBuffer 提供数据存放功能的缓存页
      */
@@ -40,11 +48,11 @@ public class WriteBuffer extends OutputStream {
     /**
      * 缓冲区数据刷新Function
      */
-    private final Function<WriteBuffer, Void> function;
+    private final Consumer<WriteBuffer> consumer;
     /**
-     * 当时是否符合wait条件
+     * 默认内存块大小
      */
-    private volatile boolean isWaiting = false;
+    private final int chunkSize;
     /**
      * items 读索引位
      */
@@ -69,23 +77,13 @@ public class WriteBuffer extends OutputStream {
      * 辅助8字节以内输出的缓存组数
      */
     private byte[] cacheByte;
-    /**
-     * 数据快速输出
-     */
-    private FasterWrite fasterWrite;
-
-    /**
-     * 默认内存块大小
-     */
-    private int chunkSize;
 
 
-    protected WriteBuffer(BufferPage bufferPage, Function<WriteBuffer, Void> flushFunction, IoServerConfig config, FasterWrite fasterWrite) {
+    WriteBuffer(BufferPage bufferPage, Consumer<WriteBuffer> consumer, int chunkSize, int capacity) {
         this.bufferPage = bufferPage;
-        this.function = flushFunction;
-        this.items = new VirtualBuffer[config.getWriteQueueCapacity()];
-        this.fasterWrite = fasterWrite == null ? new FasterWrite() : fasterWrite;
-        this.chunkSize = config.getBufferPoolChunkSize();
+        this.consumer = consumer;
+        this.items = new VirtualBuffer[capacity];
+        this.chunkSize = chunkSize;
     }
 
     /**
@@ -93,12 +91,11 @@ public class WriteBuffer extends OutputStream {
      * <br/>
      * 而使用该接口时容易传入非byte范围内的数据，接口定义与实际使用出现歧义的可能性较大，故建议废弃该方法，选用{@link WriteBuffer#writeByte(byte)}。
      *
-     * @param b
-     * @throws IOException 如果发生 I/O 错误
+     * @param b 输出字节
      * @deprecated
      */
     @Override
-    public void write(int b) throws IOException {
+    public void write(int b) {
         writeByte((byte) b);
     }
 
@@ -112,7 +109,7 @@ public class WriteBuffer extends OutputStream {
     public void writeShort(short v) throws IOException {
         initCacheBytes();
         cacheByte[0] = (byte) ((v >>> 8) & 0xFF);
-        cacheByte[1] = (byte) ((v >>> 0) & 0xFF);
+        cacheByte[1] = (byte) (v & 0xFF);
         write(cacheByte, 0, 2);
     }
 
@@ -121,22 +118,50 @@ public class WriteBuffer extends OutputStream {
      * @see #write(int)
      */
     public void writeByte(byte b) {
-        if (writeInBuf == null) {
-            writeInBuf = bufferPage.allocate(chunkSize);
+        writeLock.lock();
+        try {
+            if (writeInBuf == null) {
+                writeInBuf = bufferPage.allocate(chunkSize);
+            }
+            writeInBuf.buffer().put(b);
+            flushWriteBuffer(false);
+        } finally {
+            writeLock.unlock();
         }
-        writeInBuf.buffer().put(b);
-        if (writeInBuf.buffer().hasRemaining()) {
+    }
+
+    private void flushWriteBuffer(boolean forceFlush) {
+        if (!forceFlush && writeInBuf.buffer().hasRemaining()) {
+            return;
+        }
+        consumer.accept(this);
+        if (writeInBuf == null) {
             return;
         }
         writeInBuf.buffer().flip();
-        lock.lock();
-        try {
-            this.put(writeInBuf);
-        } finally {
-            lock.unlock();
-        }
+        VirtualBuffer virtualBuffer = writeInBuf;
         writeInBuf = null;
-        function.apply(this);
+        readLock.lock();
+        try {
+            while (count == items.length) {
+                notFull.await();
+                //防止因close诱发内存泄露
+                if (closed) {
+                    virtualBuffer.clean();
+                    return;
+                }
+            }
+
+            items[putIndex] = virtualBuffer;
+            if (++putIndex == items.length) {
+                putIndex = 0;
+            }
+            count++;
+        } catch (InterruptedException e1) {
+            throw new RuntimeException(e1);
+        } finally {
+            readLock.unlock();
+        }
     }
 
     /**
@@ -150,58 +175,77 @@ public class WriteBuffer extends OutputStream {
         cacheByte[0] = (byte) ((v >>> 24) & 0xFF);
         cacheByte[1] = (byte) ((v >>> 16) & 0xFF);
         cacheByte[2] = (byte) ((v >>> 8) & 0xFF);
-        cacheByte[3] = (byte) ((v >>> 0) & 0xFF);
+        cacheByte[3] = (byte) (v & 0xFF);
         write(cacheByte, 0, 4);
+    }
+
+
+    /**
+     * 输出long数值,占用8个字节
+     *
+     * @param v long数值
+     * @throws IOException IO异常
+     */
+    public void writeLong(long v) throws IOException {
+        initCacheBytes();
+        cacheByte[0] = (byte) ((v >>> 56) & 0xFF);
+        cacheByte[1] = (byte) ((v >>> 48) & 0xFF);
+        cacheByte[2] = (byte) ((v >>> 40) & 0xFF);
+        cacheByte[3] = (byte) ((v >>> 32) & 0xFF);
+        cacheByte[4] = (byte) ((v >>> 24) & 0xFF);
+        cacheByte[5] = (byte) ((v >>> 16) & 0xFF);
+        cacheByte[6] = (byte) ((v >>> 8) & 0xFF);
+        cacheByte[7] = (byte) (v & 0xFF);
+        write(cacheByte, 0, 8);
     }
 
     @Override
     public void write(byte[] b, int off, int len) throws IOException {
-        if (closed) {
-            throw new IOException("OutputStream has closed");
-        }
-        if (b == null) {
-            throw new NullPointerException();
-        } else if ((off < 0) || (off > b.length) || (len < 0) ||
-                ((off + len) > b.length) || ((off + len) < 0)) {
-            throw new IndexOutOfBoundsException();
-        } else if (len == 0) {
-            return;
-        }
-        lock.lock();
+        writeLock.lock();
         try {
-            waitPreWriteFinish();
-            do {
+            while (len > 0) {
                 if (writeInBuf == null) {
-                    writeInBuf = bufferPage.allocate(Math.max(chunkSize, len - off));
+                    writeInBuf = bufferPage.allocate(Math.max(chunkSize, len));
                 }
                 ByteBuffer writeBuffer = writeInBuf.buffer();
-                int minSize = Math.min(writeBuffer.remaining(), len - off);
-                if (minSize == 0 || closed) {
+                if (closed) {
                     writeInBuf.clean();
-                    throw new IOException("writeBuffer.remaining:" + writeBuffer.remaining() + " closed:" + closed);
-                }
-                writeBuffer.put(b, off, minSize);
-                off += minSize;
-                if (!writeBuffer.hasRemaining()) {
-                    writeBuffer.flip();
-                    VirtualBuffer buffer = writeInBuf;
                     writeInBuf = null;
-                    this.put(buffer);
-                    function.apply(this);
+                    throw new IOException("writeBuffer has closed");
                 }
-            } while (off < len);
-            notifyWaiting();
+                int writeSize = Math.min(writeBuffer.remaining(), len);
+                writeBuffer.put(b, off, writeSize);
+                off += writeSize;
+                len -= writeSize;
+                flushWriteBuffer(false);
+            }
         } finally {
-            lock.unlock();
+            writeLock.unlock();
         }
     }
 
-    /**
-     * 唤醒处于waiting状态的线程
-     */
-    private void notifyWaiting() {
-        isWaiting = false;
-        waiting.signal();
+
+    public void write(ByteBuffer buffer) {
+        write(VirtualBuffer.wrap(buffer));
+    }
+
+    public void write(VirtualBuffer virtualBuffer) {
+        writeLock.lock();
+        try {
+            if (writeInBuf != null && !virtualBuffer.buffer().isDirect() && writeInBuf.buffer().remaining() > virtualBuffer.buffer().remaining()) {
+                writeInBuf.buffer().put(virtualBuffer.buffer());
+                virtualBuffer.clean();
+            } else {
+                if (writeInBuf != null) {
+                    flushWriteBuffer(true);
+                }
+                virtualBuffer.buffer().compact();
+                writeInBuf = virtualBuffer;
+            }
+            flushWriteBuffer(false);
+        } finally {
+            writeLock.unlock();
+        }
     }
 
     /**
@@ -210,21 +254,6 @@ public class WriteBuffer extends OutputStream {
     private void initCacheBytes() {
         if (cacheByte == null) {
             cacheByte = new byte[8];
-        }
-    }
-
-    /**
-     * 确保数据输出有序性
-     *
-     * @throws IOException 如果发生 I/O 错误
-     */
-    private void waitPreWriteFinish() throws IOException {
-        while (isWaiting) {
-            try {
-                waiting.await();
-            } catch (InterruptedException e) {
-                throw new IOException(e);
-            }
         }
     }
 
@@ -259,35 +288,9 @@ public class WriteBuffer extends OutputStream {
         if (closed) {
             throw new RuntimeException("OutputStream has closed");
         }
-        int size = this.count;
-        if (size > 0) {
-            function.apply(this);
-        } else if (writeInBuf != null && writeInBuf.buffer().position() > 0 && lock.tryLock()) {
-            boolean fastWrite = false;
-            VirtualBuffer buffer = null;
-            try {
-                if (writeInBuf != null && writeInBuf.buffer().position() > 0) {
-                    buffer = writeInBuf;
-                    writeInBuf = null;
-                    buffer.buffer().flip();
-                    if (size == 0) {
-                        fastWrite = fasterWrite.tryAcquire();
-                    }
-                    if (!fastWrite) {
-                        this.put(buffer);
-                        size++;
-                    }
-                }
-            } finally {
-                lock.unlock();
-            }
-            if (fastWrite) {
-                fasterWrite.write(buffer);
-            } else if (size > 0) {
-                function.apply(this);
-            }
+        if (this.count > 0 || writeInBuf != null) {
+            consumer.accept(this);
         }
-
     }
 
     @Override
@@ -295,19 +298,22 @@ public class WriteBuffer extends OutputStream {
         if (closed) {
             return;
         }
-        lock.lock();
-        try {
-            flush();
-            closed = true;
-            VirtualBuffer byteBuf;
-            while ((byteBuf = poll()) != null) {
-                byteBuf.clean();
+        flush();
+        closed = true;
+        if (writeInBuf != null) {
+            writeLock.lock();
+            try {
+                if (writeInBuf != null) {
+                    writeInBuf.clean();
+                    writeInBuf = null;
+                }
+            } finally {
+                writeLock.unlock();
             }
-            if (writeInBuf != null) {
-                writeInBuf.clean();
-            }
-        } finally {
-            lock.unlock();
+        }
+        VirtualBuffer byteBuf;
+        while ((byteBuf = poll()) != null) {
+            byteBuf.clean();
         }
     }
 
@@ -317,48 +323,22 @@ public class WriteBuffer extends OutputStream {
      *
      * @return true:有,false:无
      */
-    boolean hasData() {
-        return count > 0 || (writeInBuf != null && writeInBuf.buffer().position() > 0);
+    boolean isEmpty() {
+        return count == 0 && writeInBuf == null;
     }
 
-
-    /**
-     * 存储缓冲区至队列中以备输出
-     *
-     * @param virtualBuffer 缓存对象
-     */
-    private void put(VirtualBuffer virtualBuffer) {
-        try {
-            while (count == items.length) {
-                isWaiting = true;
-                notFull.await();
-                //防止因close诱发内存泄露
-                if (closed) {
-                    virtualBuffer.clean();
-                    return;
-                }
-            }
-            items[putIndex] = virtualBuffer;
-            if (++putIndex == items.length) {
-                putIndex = 0;
-            }
-            count++;
-        } catch (InterruptedException e1) {
-            throw new RuntimeException(e1);
-        }
-    }
 
     /**
      * 获取并移除当前缓冲队列中头部的VirtualBuffer
      *
      * @return 待输出的VirtualBuffer
      */
-    VirtualBuffer poll() {
-        lock.lock();
+    VirtualBuffer pollQueue() {
+        if (count == 0) {
+            return null;
+        }
+        readLock.lock();
         try {
-            if (count == 0) {
-                return null;
-            }
             VirtualBuffer x = items[takeIndex];
             items[takeIndex] = null;
             if (++takeIndex == items.length) {
@@ -369,7 +349,36 @@ public class WriteBuffer extends OutputStream {
             }
             return x;
         } finally {
-            lock.unlock();
+            readLock.unlock();
+        }
+    }
+
+    /**
+     * 获取并移除当前缓冲队列中头部的VirtualBuffer
+     *
+     * @return 待输出的VirtualBuffer
+     */
+    VirtualBuffer poll() {
+        if (count > 0) {
+            return pollQueue();
+        }
+        if (writeInBuf == null || !writeLock.tryLock()) {
+            return null;
+        }
+        try {
+            if (count > 0) {
+                return pollQueue();
+            }
+            if (writeInBuf != null) {
+                writeInBuf.buffer().flip();
+                VirtualBuffer buffer = writeInBuf;
+                writeInBuf = null;
+                return buffer;
+            } else {
+                return null;
+            }
+        } finally {
+            writeLock.unlock();
         }
     }
 

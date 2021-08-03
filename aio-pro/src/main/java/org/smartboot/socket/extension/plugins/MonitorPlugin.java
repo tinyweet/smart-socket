@@ -1,3 +1,12 @@
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
+ * project name: smart-socket
+ * file name: MonitorPlugin.java
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
+
 package org.smartboot.socket.extension.plugins;
 
 import org.slf4j.Logger;
@@ -6,10 +15,8 @@ import org.smartboot.socket.StateMachineEnum;
 import org.smartboot.socket.transport.AioSession;
 import org.smartboot.socket.util.QuickTimerTask;
 
-import java.nio.channels.AsynchronousSocketChannel;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * 服务器运行状态监控插件
@@ -17,55 +24,56 @@ import java.util.concurrent.atomic.AtomicLong;
  * @author 三刀
  * @version V1.0 , 2018/8/19
  */
-public final class MonitorPlugin<T> implements Runnable, Plugin<T> {
+public final class MonitorPlugin<T> extends AbstractPlugin<T> implements Runnable {
     private static final Logger logger = LoggerFactory.getLogger(MonitorPlugin.class);
     /**
-     * 任务执行频率
+     * 当前周期内流入字节数
      */
-    private int seconds = 0;
+    private final LongAdder inFlow = new LongAdder();
     /**
-     * 当前周期内消息 流量监控
+     * 当前周期内流出字节数
      */
-    private AtomicLong inFlow = new AtomicLong(0);
-
-    /**
-     * 当前周期内消息 流量监控
-     */
-    private AtomicLong outFlow = new AtomicLong(0);
-
+    private final LongAdder outFlow = new LongAdder();
     /**
      * 当前周期内处理失败消息数
      */
-    private AtomicLong processFailNum = new AtomicLong(0);
-
+    private final LongAdder processFailNum = new LongAdder();
     /**
      * 当前周期内处理消息数
      */
-    private AtomicLong processMsgNum = new AtomicLong(0);
-
-
-    private AtomicLong totleProcessMsgNum = new AtomicLong(0);
-
+    private final LongAdder processMsgNum = new LongAdder();
     /**
-     * 新建连接数
+     * 当前周期内新建连接数
      */
-    private AtomicInteger newConnect = new AtomicInteger(0);
-
+    private final LongAdder newConnect = new LongAdder();
     /**
-     * 断链数
+     * 当前周期内断开连接数
      */
-    private AtomicInteger disConnect = new AtomicInteger(0);
-
+    private final LongAdder disConnect = new LongAdder();
     /**
-     * 在线连接数
+     * 当前周期内执行 read 操作次数
      */
-    private AtomicInteger onlineCount = new AtomicInteger(0);
-
-    private AtomicInteger totalConnect = new AtomicInteger(0);
-
-    private AtomicInteger readCount = new AtomicInteger(0);
-
-    private AtomicInteger writeCount = new AtomicInteger(0);
+    private final LongAdder readCount = new LongAdder();
+    /**
+     * 当前周期内执行 write 操作次数
+     */
+    private final LongAdder writeCount = new LongAdder();
+    /**
+     * 任务执行频率
+     */
+    private final int seconds;
+    /**
+     * 自插件启用起的累计连接总数
+     */
+    private long totalConnect;
+    /**
+     * 自插件启用起的累计处理消息总数
+     */
+    private long totalProcessMsgNum = 0;
+    /**
+     * 当前在线状态连接数
+     */
+    private long onlineCount;
 
     public MonitorPlugin() {
         this(60);
@@ -79,23 +87,22 @@ public final class MonitorPlugin<T> implements Runnable, Plugin<T> {
 
 
     @Override
-    public boolean preProcess(AioSession<T> session, T t) {
-        processMsgNum.incrementAndGet();
-        totleProcessMsgNum.incrementAndGet();
+    public boolean preProcess(AioSession session, T t) {
+        processMsgNum.increment();
         return true;
     }
 
     @Override
-    public void stateEvent(StateMachineEnum stateMachineEnum, AioSession<T> session, Throwable throwable) {
+    public void stateEvent(StateMachineEnum stateMachineEnum, AioSession session, Throwable throwable) {
         switch (stateMachineEnum) {
             case PROCESS_EXCEPTION:
-                processFailNum.incrementAndGet();
+                processFailNum.increment();
                 break;
             case NEW_SESSION:
-                newConnect.incrementAndGet();
+                newConnect.increment();
                 break;
             case SESSION_CLOSED:
-                disConnect.incrementAndGet();
+                disConnect.increment();
                 break;
             default:
                 //ignore other state
@@ -105,52 +112,58 @@ public final class MonitorPlugin<T> implements Runnable, Plugin<T> {
 
     @Override
     public void run() {
-        long curInFlow = inFlow.getAndSet(0);
-        long curOutFlow = outFlow.getAndSet(0);
-        long curDiscardNum = processFailNum.getAndSet(0);
-        long curProcessMsgNum = processMsgNum.getAndAdd(-processMsgNum.get());
-        int connectCount = newConnect.getAndAdd(-newConnect.get());
-        int disConnectCount = disConnect.getAndAdd(-disConnect.get());
-        logger.info("\r\n-----这" + seconds + "秒发生了什么----\r\ninflow:\t\t" + curInFlow * 1.0 / (1024 * 1024) + "(MB)"
+        long curInFlow = getAndReset(inFlow);
+        long curOutFlow = getAndReset(outFlow);
+        long curDiscardNum = getAndReset(processFailNum);
+        long curProcessMsgNum = getAndReset(processMsgNum);
+        long connectCount = getAndReset(newConnect);
+        long disConnectCount = getAndReset(disConnect);
+        long curReadCount = getAndReset(readCount);
+        long curWriteCount = getAndReset(writeCount);
+        onlineCount += connectCount - disConnectCount;
+        totalProcessMsgNum += curProcessMsgNum;
+        totalConnect += connectCount;
+        logger.info("\r\n-----" + seconds + "seconds ----\r\ninflow:\t\t" + curInFlow * 1.0 / (1024 * 1024) + "(MB)"
                 + "\r\noutflow:\t" + curOutFlow * 1.0 / (1024 * 1024) + "(MB)"
                 + "\r\nprocess fail:\t" + curDiscardNum
-                + "\r\nprocess success:\t" + curProcessMsgNum
-                + "\r\nprocess total:\t" + totleProcessMsgNum.get()
-                + "\r\nread count:\t" + readCount.getAndSet(0) + "\twrite count:\t" + writeCount.getAndSet(0)
+                + "\r\nprocess count:\t" + curProcessMsgNum
+                + "\r\nprocess total:\t" + totalProcessMsgNum
+                + "\r\nread count:\t" + curReadCount + "\twrite count:\t" + curWriteCount
                 + "\r\nconnect count:\t" + connectCount
                 + "\r\ndisconnect count:\t" + disConnectCount
-                + "\r\nonline count:\t" + onlineCount.addAndGet(connectCount - disConnectCount)
-                + "\r\nconnected total:\t" + totalConnect.addAndGet(connectCount)
+                + "\r\nonline count:\t" + onlineCount
+                + "\r\nconnected total:\t" + totalConnect
                 + "\r\nRequests/sec:\t" + curProcessMsgNum * 1.0 / seconds
                 + "\r\nTransfer/sec:\t" + (curInFlow * 1.0 / (1024 * 1024) / seconds) + "(MB)");
     }
 
-    @Override
-    public boolean shouldAccept(AsynchronousSocketChannel channel) {
-        return true;
+    private long getAndReset(LongAdder longAdder) {
+        long result = longAdder.longValue();
+        longAdder.add(-result);
+        return result;
     }
 
     @Override
-    public void afterRead(AioSession<T> session, int readSize) {
+    public void afterRead(AioSession session, int readSize) {
         //出现result为0,说明代码存在问题
         if (readSize == 0) {
             logger.error("readSize is 0");
         }
-        inFlow.addAndGet(readSize);
+        inFlow.add(readSize);
     }
 
     @Override
-    public void beforeRead(AioSession<T> session) {
-        readCount.incrementAndGet();
+    public void beforeRead(AioSession session) {
+        readCount.increment();
     }
 
     @Override
-    public void afterWrite(AioSession<T> session, int writeSize) {
-        outFlow.addAndGet(writeSize);
+    public void afterWrite(AioSession session, int writeSize) {
+        outFlow.add(writeSize);
     }
 
     @Override
-    public void beforeWrite(AioSession<T> session) {
-        writeCount.incrementAndGet();
+    public void beforeWrite(AioSession session) {
+        writeCount.increment();
     }
 }

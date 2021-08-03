@@ -1,3 +1,12 @@
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
+ * project name: smart-socket
+ * file name: DelimiterProtocol.java
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
+
 package com.smartboot.socket.decoder;
 
 import org.smartboot.socket.Protocol;
@@ -17,7 +26,7 @@ public class DelimiterProtocol implements Protocol<String> {
     private static final byte[] DELIMITER_BYTES = new byte[]{'\r', '\n'};
 
     @Override
-    public String decode(ByteBuffer buffer, AioSession<String> session) {
+    public String decode(ByteBuffer buffer, AioSession session) {
         DelimiterFrameDecoder delimiterFrameDecoder;
         if (session.getAttachment() == null) {//构造指定结束符的临时缓冲区
             delimiterFrameDecoder = new DelimiterFrameDecoder(DELIMITER_BYTES, 64);
@@ -39,7 +48,7 @@ public class DelimiterProtocol implements Protocol<String> {
     }
 
     public static void main(String[] args) {
-        ByteBuffer b=ByteBuffer.allocate(4);
+        ByteBuffer b = ByteBuffer.allocate(4);
         b.putInt(104857600);
 
         System.out.println(StringUtils.toHexString(b.array()));

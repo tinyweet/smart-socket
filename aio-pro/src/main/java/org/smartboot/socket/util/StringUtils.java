@@ -1,10 +1,11 @@
-/*
- * Copyright (c) 2018, org.smartboot. All rights reserved.
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
  * project name: smart-socket
  * file name: StringUtils.java
- * Date: 2018-01-01
- * Author: sandao
- */
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
 
 package org.smartboot.socket.util;
 
@@ -45,8 +46,8 @@ public class StringUtils {
      * @param bytes byte[]
      */
     public static String toHexString(final byte[] bytes) {
-        final StringBuffer buffer = new StringBuffer(bytes.length);
-        buffer.append("\r\n\t   0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\r\n");
+        final StringBuilder buffer = new StringBuilder(bytes.length);
+        buffer.append("\r\n\t\t   0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\r\n");
         int startIndex = 0;
         int column = 0;
         for (int i = 0; i < bytes.length; i++) {

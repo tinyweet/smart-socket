@@ -1,10 +1,11 @@
-/*
- * Copyright (c) 2017, org.smartboot. All rights reserved.
+/*******************************************************************************
+ * Copyright (c) 2017-2019, org.smartboot. All rights reserved.
  * project name: smart-socket
  * file name: Protocol.java
- * Date: 2017-11-25
- * Author: sandao
- */
+ * Date: 2019-12-31
+ * Author: sandao (zhengjunweimail@163.com)
+ *
+ ******************************************************************************/
 
 package org.smartboot.socket;
 
@@ -35,5 +36,5 @@ public interface Protocol<T> {
      * @param session    本次需要解码的session
      * @return 本次解码成功后封装的业务消息对象, 返回null则表示解码未完成
      */
-    T decode(final ByteBuffer readBuffer, AioSession<T> session);
+    T decode(final ByteBuffer readBuffer, AioSession session);
 }
